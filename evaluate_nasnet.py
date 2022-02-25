@@ -1,7 +1,7 @@
 import numpy as np
 import argparse
-from path import Path
-
+from pathlib import Path
+import pandas as pd
 from keras.models import Model
 from keras.layers import Dense, Dropout
 from keras.preprocessing.image import load_img, img_to_array
@@ -16,6 +16,9 @@ parser.add_argument('-dir', type=str, default=None,
 
 parser.add_argument('-img', type=str, default=[None], nargs='+',
                     help='Pass one or more image paths to evaluate them')
+
+parser.add_argument('-csv', type=str, default=None,
+                    help='Pass a csv to evaluate the images in it')
 
 parser.add_argument('-rank', type=str, default='true',
                     help='Whether to tank the images after they have been scored')
@@ -35,6 +38,10 @@ elif args.img[0] is not None:
     print("Loading images from path(s) : ", args.img)
     imgs = args.img
 
+elif args.csv is not None:
+    csv = pd.read_csv(args.csv)
+    imgs = csv['path'].apply(lambda x: Path(x)).tolist()
+
 else:
     raise RuntimeError('Either -dir or -img arguments must be passed as argument')
 
@@ -46,7 +53,7 @@ with tf.device('/CPU:0'):
     model = Model(base_model.input, x)
     model.load_weights('weights/nasnet_weights.h5')
 
-    score_list = []
+    score_list, means, stds = [], [], []
 
     for img_path in imgs:
         img = load_img(img_path, target_size=target_size)
@@ -62,10 +69,17 @@ with tf.device('/CPU:0'):
 
         file_name = Path(img_path).name.lower()
         score_list.append((file_name, mean))
+        means.append(mean)
+        stds.append(std)
 
         print("Evaluating : ", img_path)
         print("NIMA Score : %0.3f +- (%0.3f)" % (mean, std))
         print()
+
+    if args.csv is not None:
+        csv['score_mean']=means
+        csv['score_stds']=stds
+        csv.to_csv(args.csv, index=False)
 
     if rank_images:
         print("*" * 40, "Ranking Images", "*" * 40)
